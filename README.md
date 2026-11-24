@@ -11,6 +11,8 @@ the server's own list of models, which is refreshed every hour, so new models ap
 A Test connection button checks the endpoint and API key without using any tokens, and warns about actions whose
 model the server does not list.
 
+![Provider instance settings for Groq, after Test connection and get models reports that the server lists 12 models](docs/images/connectiontest.png)
+
 Models can optionally be described in JSON, typed in or loaded from a file, to give them display names, a default,
 settings fields or image sizes. Extra request parameters such as temperature can be set for any model.
 
@@ -24,9 +26,9 @@ https://github.com/marcusgreen/moodle-aiprovider_genericopenai
 
 Place the files in a directory
 
-moodle/ai/provider/genericopenai
+moodle/public/ai/provider/genericopenai
 
-Where moodle is the webroot for your install.
+Where moodle is the directory containing your Moodle code. Since Moodle 5.1 the web root is its public directory.
 
 Go to Site Administration/Notifications
 
