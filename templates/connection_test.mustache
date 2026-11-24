@@ -1,0 +1,39 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template aiprovider_genericopenai/connection_test
+
+    Button to test the connection of a saved provider instance, and the region for the result.
+
+    Context variables required for this template:
+    * providerid - The provider instance id.
+    * modeltype - On an action form, the type of AI model dropdown to fill with the models found (1 text, 2 image), else 0.
+
+    Example context (json):
+    {
+        "providerid": 1,
+        "modeltype": 1
+    }
+}}
+<div class="aiprovider_genericopenai-connectiontest mb-3" data-region="aiprovider_genericopenai-connectiontest">
+    <button type="button" class="btn btn-secondary" data-action="aiprovider_genericopenai-testconnection"
+            data-providerid="{{providerid}}" data-modeltype="{{modeltype}}">
+        {{#str}} connectiontest, aiprovider_genericopenai {{/str}}
+    </button>
+    <div class="form-text text-muted">{{#str}} connectiontest_desc, aiprovider_genericopenai {{/str}}</div>
+    <div class="mt-2" data-region="aiprovider_genericopenai-connectiontest-result" aria-live="polite"></div>
+</div>
