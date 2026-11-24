@@ -91,8 +91,8 @@ final class connection_tester_test extends \advanced_testcase {
     public function test_success(): void {
         $history = [];
         ['mock' => $mock] = $this->get_mocked_http_client($history);
-        // The default models of all actions are listed, so there are no warnings.
-        $body = '{"data": [{"id": "gpt-image-2.6-sunburst"}, {"id": "gpt-4o"}, {"id": "gpt-6-luna"}, {"id": "gpt-6-luna"}]}';
+        // No action has a model saved, so there are no warnings.
+        $body = '{"data": [{"id": "qwen2.5"}, {"id": "gpt-4o"}, {"id": "llama3.1:8b"}, {"id": "llama3.1:8b"}]}';
         $mock->append(new Response(200, ['Content-Type' => 'application/json'], $body));
 
         $provider = $this->create_test_provider(['orgid' => 'org-1']);
@@ -101,7 +101,7 @@ final class connection_tester_test extends \advanced_testcase {
         $this->assertTrue($result['success']);
         $this->assertEquals(200, $result['httpstatus']);
         // Sorted, without duplicates.
-        $this->assertEquals(['gpt-4o', 'gpt-6-luna', 'gpt-image-2.6-sunburst'], $result['models']);
+        $this->assertEquals(['gpt-4o', 'llama3.1:8b', 'qwen2.5'], $result['models']);
         $this->assertEquals(get_string('connectiontest:success', 'aiprovider_genericopenai', 3), $result['message']);
         $this->assertEquals([], $result['warnings']);
 
@@ -114,6 +114,45 @@ final class connection_tester_test extends \advanced_testcase {
         $this->assertEquals('https://api.example.com/v1/models', (string) $request->getUri());
         $this->assertEquals('Bearer secret', $request->getHeaderLine('Authorization'));
         $this->assertEquals('org-1', $request->getHeaderLine('OpenAI-Organization'));
+    }
+
+    /**
+     * Test the kind of model is taken from the fields some servers add, and the dropdowns use it.
+     */
+    public function test_model_kinds(): void {
+        ['mock' => $mock] = $this->get_mocked_http_client();
+        $body = json_encode(['data' => [
+            // OpenAI, Groq and Ollama give no kind.
+            ['id' => 'llama3.1:8b'],
+            // Together AI.
+            ['id' => 'flux-schnell', 'type' => 'image'],
+            ['id' => 'bge-large', 'type' => 'embedding'],
+            ['id' => 'mixtral', 'type' => 'chat'],
+            // OpenRouter.
+            ['id' => 'image-only', 'architecture' => ['output_modalities' => ['image']]],
+            ['id' => 'text-and-image', 'architecture' => ['output_modalities' => ['text', 'image']]],
+            ['id' => 'audio-only', 'architecture' => ['output_modalities' => ['audio']]],
+        ]]);
+        $mock->append(new Response(200, [], $body));
+        $provider = $this->create_test_provider();
+
+        $result = (new connection_tester($provider))->test();
+
+        $this->assertCount(7, $result['models']);
+        $this->assertEquals(
+            ['llama3.1:8b', 'mixtral', 'text-and-image'],
+            model_registry::get_server_models($provider, model_registry::KIND_TEXT),
+        );
+        $this->assertEquals(
+            ['flux-schnell', 'image-only'],
+            model_registry::get_server_models($provider, model_registry::KIND_IMAGE),
+        );
+        $this->assertEquals(['llama3.1:8b', 'mixtral', 'text-and-image'], array_keys(
+            model_registry::get_model_options(\aiprovider_genericopenai\aimodel\openai_base::MODEL_TYPE_TEXT, $provider),
+        ));
+        $this->assertEquals(['flux-schnell', 'image-only'], array_keys(
+            model_registry::get_model_options(\aiprovider_genericopenai\aimodel\openai_base::MODEL_TYPE_IMAGE, $provider),
+        ));
     }
 
     /**

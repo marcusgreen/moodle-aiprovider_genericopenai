@@ -1,0 +1,6 @@
+/* An example in an empty JSON field, styled so it is not taken for a value. The colour keeps text contrast. */
+.aiprovider_genericopenai-jsonfield::placeholder {
+    color: var(--bs-secondary-color, #6c757d);
+    font-style: italic;
+    opacity: 1;
+}

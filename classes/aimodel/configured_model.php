@@ -20,7 +20,7 @@ use core_ai\aimodel\base;
 use MoodleQuickForm;
 
 /**
- * An AI model described by a definition array, from db/models.json or the models setting of a provider instance.
+ * An AI model described by a definition array, from the models setting of a provider instance.
  *
  * Definitions are checked by {@see \aiprovider_genericopenai\model_registry::validate_definitions()} before use.
  *

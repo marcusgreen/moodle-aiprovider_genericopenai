@@ -100,9 +100,13 @@ class provider extends \core_ai\provider {
     /**
      * Get the base API endpoint from the provider configuration, without a trailing slash.
      *
+     * A full action URL, such as https://api.groq.com/openai/v1/chat/completions, is reduced to its base,
+     * as the action paths and /models are appended to it.
+     *
      * @return string The base endpoint, e.g. https://api.openai.com/v1, or an empty string if not set.
      */
     public function get_api_endpoint(): string {
-        return rtrim(trim($this->config['apiendpoint'] ?? ''), '/');
+        $endpoint = rtrim(trim($this->config['apiendpoint'] ?? ''), '/');
+        return preg_replace('~/(chat/completions|images/generations|models)$~i', '', $endpoint);
     }
 }

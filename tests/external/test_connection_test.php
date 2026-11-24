@@ -62,27 +62,6 @@ final class test_connection_test extends \core_external\tests\externallib_testca
         $this->assertTrue($result['success']);
         $this->assertEquals(['gpt-4o'], $result['models']);
         $this->assertEquals(200, $result['httpstatus']);
-        $this->assertEquals([], $result['options']);
-    }
-
-    /**
-     * Test the options for an AI model dropdown include the models the server lists.
-     */
-    public function test_execute_options(): void {
-        $this->resetAfterTest();
-        $this->setAdminUser();
-        set_config('curlsecurityblockedhosts', '');
-        ['mock' => $mock] = $this->get_mocked_http_client();
-        $mock->append(new Response(200, [], '{"data": [{"id": "gpt-6-luna"}, {"id": "llama3.1:8b"}]}'));
-        $mock->append(new Response(200, [], '{"data": [{"id": "gpt-6-luna"}, {"id": "llama3.1:8b"}]}'));
-        $provider = $this->create_test_provider();
-
-        $text = external_api::clean_returnvalue(test_connection::execute_returns(), test_connection::execute($provider->id, 1));
-        $image = external_api::clean_returnvalue(test_connection::execute_returns(), test_connection::execute($provider->id, 2));
-
-        $this->assertEquals(['value' => 'gpt-6-luna', 'label' => 'GPT-6 Luna'], $text['options'][3]);
-        $this->assertEquals(['value' => 'llama3.1:8b', 'label' => 'llama3.1:8b'], end($text['options']));
-        $this->assertEquals(['gpt-image-2.6-sunburst', 'gpt-image-2.6-flare'], array_column($image['options'], 'value'));
     }
 
     /**

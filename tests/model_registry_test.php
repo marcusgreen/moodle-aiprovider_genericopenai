@@ -18,6 +18,7 @@ namespace aiprovider_genericopenai;
 
 use aiprovider_genericopenai\aimodel\configured_model;
 use aiprovider_genericopenai\aimodel\openai_base;
+use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 
@@ -62,102 +63,52 @@ final class model_registry_test extends \advanced_testcase {
     }
 
     /**
-     * Test the bundled models are valid and keep the models offered before they were moved to db/models.json.
+     * Test no models are built in.
      */
-    public function test_bundled_models(): void {
-        $this->assertEquals([], model_registry::validate_definitions(model_registry::get_bundled_definitions()));
-
-        $this->assertEquals(
-            ['gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna'],
-            array_keys(model_registry::get_models_of_type(openai_base::MODEL_TYPE_TEXT)),
-        );
-        $this->assertEquals(
-            ['gpt-image-2.6-sunburst', 'gpt-image-2.6-flare'],
-            array_keys(model_registry::get_models_of_type(openai_base::MODEL_TYPE_IMAGE)),
-        );
-        $this->assertEquals('gpt-6-luna', model_registry::get_default_model(openai_base::MODEL_TYPE_TEXT));
-        $this->assertEquals('gpt-image-2.6-sunburst', model_registry::get_default_model(openai_base::MODEL_TYPE_IMAGE));
-
-        $luna = model_registry::get_model('gpt-6-luna');
-        $this->assertEquals('GPT-6 Luna', $luna->get_model_display_name());
-        $this->assertEquals(['max_completion_tokens'], array_keys($luna->get_model_settings()));
-        $this->assertEquals(PARAM_INT, $luna->get_model_settings()['max_completion_tokens']['type']);
-
-        $sunburst = model_registry::get_model('gpt-image-2.6-sunburst');
-        $this->assertEquals('1536x1024', $sunburst->calculate_size('landscape'));
-        $this->assertEquals('high', $sunburst->calculate_quality('hd'));
-        $this->assertNull($sunburst->response_format());
-        $this->assertEquals('png', $sunburst->get_output_format());
-
-        // Models with a shutdown date are no longer offered.
-        $this->assertNull(model_registry::get_model('gpt-4o'));
-        $this->assertNull(model_registry::get_model('o1'));
-        $this->assertNull(model_registry::get_model('dall-e-3'));
+    public function test_no_models(): void {
+        $this->assertEquals([], model_registry::get_models());
         $this->assertNull(model_registry::get_model('custom'));
+        $this->assertNull(model_registry::get_default_model(openai_base::MODEL_TYPE_TEXT));
+        $this->assertNull(model_registry::get_default_model(openai_base::MODEL_TYPE_IMAGE));
     }
 
     /**
-     * Test extend mode adds models, replaces a bundled model of the same name and moves the default of a type.
+     * Test the models setting of an instance describes its models, and the default of each type.
      */
-    public function test_extend(): void {
+    public function test_instance_models(): void {
         $this->resetAfterTest();
         $provider = $this->create_test_provider([
             'models' => [
-                ['name' => 'llama3.1:8b', 'type' => 'text', 'default' => true],
-                ['name' => 'gpt-6-luna', 'displayname' => 'GPT-6 Luna (proxy)', 'type' => 'text'],
+                ['name' => 'qwen2.5', 'type' => 'text'],
+                ['name' => 'llama3.1:8b', 'displayname' => 'Llama 3.1 8B', 'type' => 'text', 'default' => true],
                 self::IMAGE_MODEL,
             ],
         ]);
 
         $text = model_registry::get_models_of_type(openai_base::MODEL_TYPE_TEXT, $provider);
-        $this->assertEquals(
-            ['gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna', 'llama3.1:8b'],
-            array_keys($text),
-        );
-        $this->assertEquals('GPT-6 Luna (proxy)', $text['gpt-6-luna']->get_model_display_name());
-        $this->assertFalse($text['gpt-6-luna']->has_model_settings());
+        $this->assertEquals(['qwen2.5', 'llama3.1:8b'], array_keys($text));
+        $this->assertEquals('Llama 3.1 8B', $text['llama3.1:8b']->get_model_display_name());
         $this->assertEquals('llama3.1:8b', model_registry::get_default_model(openai_base::MODEL_TYPE_TEXT, $provider));
 
-        // No image model is marked default by the instance, so the bundled default stays.
-        $this->assertEquals('gpt-image-2.6-sunburst', model_registry::get_default_model(openai_base::MODEL_TYPE_IMAGE, $provider));
+        // With no model marked default, the first model of the type is the default.
+        $this->assertEquals('flux-schnell', model_registry::get_default_model(openai_base::MODEL_TYPE_IMAGE, $provider));
         $flux = model_registry::get_model('flux-schnell', $provider);
         $this->assertEquals('768x512', $flux->calculate_size('landscape'));
         $this->assertEquals('low', $flux->calculate_quality('standard'));
         $this->assertEquals('webp', $flux->get_output_format());
 
-        // Other instances and the bundled list are not affected.
+        // Other instances are not affected.
         $this->assertNull(model_registry::get_model('llama3.1:8b'));
     }
 
     /**
-     * Test a plain list is the same as extend mode.
+     * Test a plain list is the same as an object with a models list.
      */
     public function test_plain_list(): void {
         $this->resetAfterTest();
         $provider = $this->create_test_provider([['name' => 'mistral', 'type' => 'text']]);
 
-        $this->assertEquals(
-            ['gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna', 'mistral'],
-            array_keys(model_registry::get_models_of_type(openai_base::MODEL_TYPE_TEXT, $provider)),
-        );
-    }
-
-    /**
-     * Test replace mode offers only the instance models.
-     */
-    public function test_replace(): void {
-        $this->resetAfterTest();
-        $provider = $this->create_test_provider([
-            'mode' => 'replace',
-            'models' => [
-                ['name' => 'qwen2.5', 'type' => 'text'],
-                ['name' => 'llama3.1:8b', 'type' => 'text'],
-            ],
-        ]);
-
-        $this->assertEquals(['qwen2.5', 'llama3.1:8b'], array_keys(model_registry::get_models($provider)));
-        // With no model marked default, the first model of the type is the default.
-        $this->assertEquals('qwen2.5', model_registry::get_default_model(openai_base::MODEL_TYPE_TEXT, $provider));
+        $this->assertEquals(['mistral'], array_keys(model_registry::get_models($provider)));
         $this->assertNull(model_registry::get_default_model(openai_base::MODEL_TYPE_IMAGE, $provider));
     }
 
@@ -171,7 +122,7 @@ final class model_registry_test extends \advanced_testcase {
         $models = model_registry::get_models($provider);
 
         $this->assertDebuggingCalled();
-        $this->assertEquals(array_column(model_registry::get_bundled_definitions(), 'name'), array_keys($models));
+        $this->assertEquals([], $models);
     }
 
     /**
@@ -222,7 +173,7 @@ final class model_registry_test extends \advanced_testcase {
         $this->assertEquals([], model_registry::validate_json(''));
         $this->assertEquals([], model_registry::validate_json('  '));
         $this->assertEquals([], model_registry::validate_json('[]'));
-        $this->assertEquals([], model_registry::validate_json(json_encode(['mode' => 'replace', 'models' => [
+        $this->assertEquals([], model_registry::validate_json(json_encode(['models' => [
             ['name' => 'meta-llama/Llama-3.1-8B-Instruct', 'type' => 'text', 'default' => false, 'settings' => [
                 'reasoning_effort' => ['type' => 'select', 'options' => ['low'], 'label' => [
                     'identifier' => 'settings_top_p',
@@ -266,9 +217,8 @@ final class model_registry_test extends \advanced_testcase {
         return [
             'Not JSON' => ['{"models": [', 'models:error:json', 'Syntax error'],
             'Scalar' => ['"gpt-4o"', 'models:error:structure'],
-            'No models list' => ['{"mode": "extend"}', 'models:error:structure'],
+            'No models list' => ['{"model": []}', 'models:error:structure'],
             'Models not a list' => ['{"models": {"name": "a"}}', 'models:error:structure'],
-            'Bad mode' => ['{"mode": "merge", "models": []}', 'models:error:mode'],
             'Model not an object' => ['["gpt-4o"]', 'models:error:notobject'],
             'No name' => [$model(['type' => 'text']), 'models:error:name'],
             'Name with spaces' => [$model(['name' => ' a ', 'type' => 'text']), 'models:error:name'],
@@ -318,26 +268,28 @@ final class model_registry_test extends \advanced_testcase {
      */
     public function test_server_models(): void {
         $this->resetAfterTest();
-        $provider = $this->create_test_provider([['name' => 'flux-schnell'] + self::IMAGE_MODEL]);
+        $provider = $this->create_test_provider([
+            ['name' => 'llama3.1:8b', 'displayname' => 'Llama 3.1 8B', 'type' => 'text'],
+            self::IMAGE_MODEL,
+        ]);
         $this->assertEquals([], model_registry::get_server_models($provider));
 
-        model_registry::set_server_models($provider, ['gpt-6-luna', 'flux-schnell', 'llama3.1:8b', 'whisper-1']);
+        model_registry::set_server_models($provider, ['flux-schnell', 'llama3.1:8b', 'qwen2.5', 'whisper-1']);
 
         $this->assertEquals(
-            ['gpt-6-luna', 'flux-schnell', 'llama3.1:8b', 'whisper-1'],
+            ['flux-schnell', 'llama3.1:8b', 'qwen2.5', 'whisper-1'],
             model_registry::get_server_models($provider),
         );
         $text = model_registry::get_model_options(openai_base::MODEL_TYPE_TEXT, $provider);
-        // Listed models keep their place and display name, and models of another known type are left out.
-        $this->assertEquals(
-            ['gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna', 'llama3.1:8b', 'whisper-1'],
-            array_keys($text),
-        );
-        $this->assertEquals('GPT-6 Luna', $text['gpt-6-luna']);
-        $this->assertEquals('llama3.1:8b', $text['llama3.1:8b']);
+        // Models in the setting come first with their display name, and models of another known type are left out.
+        $this->assertEquals(['llama3.1:8b', 'qwen2.5', 'whisper-1'], array_keys($text));
+        $this->assertEquals('Llama 3.1 8B', $text['llama3.1:8b']);
+        $this->assertEquals('qwen2.5', $text['qwen2.5']);
+        $this->assertEquals('llama3.1:8b', model_registry::get_default_model(openai_base::MODEL_TYPE_TEXT, $provider));
+
         // Models of unknown type are not offered for images.
         $this->assertEquals(
-            ['gpt-image-2.6-sunburst', 'gpt-image-2.6-flare', 'flux-schnell'],
+            ['flux-schnell'],
             array_keys(model_registry::get_model_options(openai_base::MODEL_TYPE_IMAGE, $provider)),
         );
 
@@ -350,5 +302,37 @@ final class model_registry_test extends \advanced_testcase {
         $unsaved = new provider(true, 'unsaved', json_encode(['apiendpoint' => 'http://x/v1', 'apikey' => 'x']));
         model_registry::set_server_models($unsaved, ['a']);
         $this->assertEquals([], model_registry::get_server_models($unsaved));
+    }
+
+    /**
+     * Test the server models are fetched once when not known, and a failed request is not repeated.
+     */
+    public function test_fetch_server_models(): void {
+        $this->resetAfterTest();
+        set_config('curlsecurityblockedhosts', '');
+        ['mock' => $mock] = $this->get_mocked_http_client();
+        $mock->append(new Response(200, [], '{"data": [{"id": "llama-3.3-70b-versatile"}]}'));
+        $mock->append(new Response(500, [], ''));
+        $provider = $this->create_test_provider('');
+
+        model_registry::fetch_server_models($provider);
+        $this->assertEquals(['llama-3.3-70b-versatile'], model_registry::get_server_models($provider));
+        $this->assertEquals(
+            'llama-3.3-70b-versatile',
+            model_registry::get_default_model(openai_base::MODEL_TYPE_TEXT, $provider),
+        );
+
+        // A known list is not fetched again.
+        model_registry::fetch_server_models($provider);
+        $this->assertCount(1, $mock);
+
+        // After the key changes the list is fetched again, and a failure is remembered as an empty list.
+        $manager = \core\di::get(\core_ai\manager::class);
+        $provider = $manager->update_provider_instance($provider, ['apikey' => 'changed'] + $provider->config);
+        model_registry::fetch_server_models($provider);
+        $this->assertCount(0, $mock);
+        $this->assertEquals([], model_registry::get_server_models($provider));
+        model_registry::fetch_server_models($provider);
+        $this->assertNull(model_registry::get_default_model(openai_base::MODEL_TYPE_TEXT, $provider));
     }
 }

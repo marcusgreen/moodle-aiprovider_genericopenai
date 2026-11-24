@@ -16,9 +16,7 @@
 
 namespace aiprovider_genericopenai\external;
 
-use aiprovider_genericopenai\aimodel\openai_base;
 use aiprovider_genericopenai\connection_tester;
-use aiprovider_genericopenai\model_registry;
 use aiprovider_genericopenai\provider;
 use core_external\external_api;
 use core_external\external_function_parameters;
@@ -42,12 +40,6 @@ class test_connection extends external_api {
     public static function execute_parameters(): external_function_parameters {
         return new external_function_parameters([
             'providerid' => new external_value(PARAM_INT, 'The provider instance id'),
-            'modeltype' => new external_value(
-                PARAM_INT,
-                'The type of AI model dropdown to return options for, 1 for text or 2 for image, or 0 for none',
-                VALUE_DEFAULT,
-                0,
-            ),
         ]);
     }
 
@@ -55,13 +47,11 @@ class test_connection extends external_api {
      * Test the connection of a provider instance.
      *
      * @param int $providerid The provider instance id.
-     * @param int $modeltype The type of AI model dropdown to return options for, or 0 for none.
      * @return array
      */
-    public static function execute(int $providerid, int $modeltype = 0): array {
-        ['providerid' => $providerid, 'modeltype' => $modeltype] = self::validate_parameters(self::execute_parameters(), [
+    public static function execute(int $providerid): array {
+        ['providerid' => $providerid] = self::validate_parameters(self::execute_parameters(), [
             'providerid' => $providerid,
-            'modeltype' => $modeltype,
         ]);
 
         $context = \context_system::instance();
@@ -75,16 +65,7 @@ class test_connection extends external_api {
             throw new \moodle_exception('connectiontest:invalidprovider', 'aiprovider_genericopenai');
         }
 
-        $result = (new connection_tester($instance))->test();
-
-        // The dropdown options include the models the server just listed.
-        $result['options'] = [];
-        if (in_array($modeltype, [openai_base::MODEL_TYPE_TEXT, openai_base::MODEL_TYPE_IMAGE], true)) {
-            foreach (model_registry::get_model_options($modeltype, $instance) as $value => $label) {
-                $result['options'][] = ['value' => $value, 'label' => $label];
-            }
-        }
-        return $result;
+        return (new connection_tester($instance))->test();
     }
 
     /**
@@ -104,13 +85,6 @@ class test_connection extends external_api {
             'warnings' => new external_multiple_structure(
                 new external_value(PARAM_TEXT, 'Warning message'),
                 'Problems found that did not stop the test',
-            ),
-            'options' => new external_multiple_structure(
-                new external_single_structure([
-                    'value' => new external_value(PARAM_TEXT, 'Model name'),
-                    'label' => new external_value(PARAM_TEXT, 'Display name'),
-                ]),
-                'Options for the AI model dropdown of the requested type, not including Custom',
             ),
         ]);
     }

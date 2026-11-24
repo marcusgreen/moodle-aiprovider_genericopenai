@@ -31,6 +31,21 @@ const MAX_SIZE = 512 * 1024;
 
 const Selectors = {
     fileInput: '[data-action="aiprovider_genericopenai-loadmodels"]',
+    chooseButton: '[data-action="aiprovider_genericopenai-choosemodelsfile"]',
+    fileName: '[data-region="aiprovider_genericopenai-modelsfilename"]',
+};
+
+/**
+ * Show the name of the file loaded, or nothing.
+ *
+ * @param {HTMLInputElement} input The file input.
+ * @param {String} name The file name.
+ */
+const showFileName = (input, name) => {
+    const region = input.parentElement.querySelector(Selectors.fileName);
+    if (region) {
+        region.textContent = name;
+    }
 };
 
 /**
@@ -58,6 +73,7 @@ const loadFile = async(input) => {
         return;
     }
     if (file.size > MAX_SIZE) {
+        showFileName(input, '');
         await showError('modelsfile:toobig', MAX_SIZE / 1024);
         input.value = '';
         return;
@@ -68,21 +84,29 @@ const loadFile = async(input) => {
         // Tidy the layout. The server checks the content when the form is saved.
         text = JSON.stringify(JSON.parse(text), null, 4);
     } catch (error) {
+        showFileName(input, '');
         await showError('modelsfile:invalidjson', error.message);
         input.value = '';
         return;
     }
 
     target.value = text;
+    showFileName(input, file.name);
     // Let the form change checker know the setting changed.
     target.dispatchEvent(new Event('change', {bubbles: true}));
     input.value = '';
 };
 
 /**
- * Initialise the file input.
+ * Initialise the file input and the button that opens it.
  */
 export const init = () => {
+    document.addEventListener('click', (e) => {
+        const button = e.target.closest(Selectors.chooseButton);
+        if (button) {
+            document.getElementById(button.getAttribute('aria-controls'))?.click();
+        }
+    });
     document.addEventListener('change', (e) => {
         const input = e.target.closest(Selectors.fileInput);
         if (input) {

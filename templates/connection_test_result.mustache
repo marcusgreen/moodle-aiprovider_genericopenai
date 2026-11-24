@@ -25,7 +25,6 @@
     * warnings - Warning messages.
     * models - Model names listed by the server.
     * hasmodels - Whether any models were listed.
-    * optionsupdated - Whether the AI model dropdown was given the models listed.
 
     Example context (json):
     {
@@ -33,16 +32,12 @@
         "message": "Connection successful. The server lists 2 models.",
         "warnings": ["The model llama3 used by Generate text is not listed by the server."],
         "models": ["gpt-4o", "gpt-4o-mini"],
-        "hasmodels": true,
-        "optionsupdated": true
+        "hasmodels": true
     }
 }}
 <div class="alert {{#success}}alert-success{{/success}}{{^success}}alert-danger{{/success}} mb-2" role="status">
     {{message}}
 </div>
-{{#optionsupdated}}
-<div class="alert alert-info mb-2">{{#str}} connectiontest:optionsupdated, aiprovider_genericopenai {{/str}}</div>
-{{/optionsupdated}}
 {{#warnings}}
 <div class="alert alert-warning mb-2">{{.}}</div>
 {{/warnings}}

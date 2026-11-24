@@ -77,4 +77,29 @@ final class hook_listener_test extends \advanced_testcase {
         // The model name from the submitted JSON is escaped.
         $this->assertStringContainsString('llama&lt;3&gt;', $error);
     }
+
+    /**
+     * Test the models section starts collapsed when empty, and the core rate limit settings stay in a section of their own.
+     */
+    public function test_models_section(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $collapsed = fn(\core_ai\form\ai_provider_form $form): array => (fn() => [
+            $this->_form->_collapsibleElements,
+            array_keys($this->_form->_elementIndex),
+        ])->call($form);
+
+        [$states, $order] = $collapsed(new \core_ai\form\ai_provider_form(
+            customdata: ['providerconfigs' => ['aiprovider' => 'aiprovider_genericopenai']],
+        ));
+        $this->assertTrue($states['modelsheader']);
+        $this->assertFalse($states['ratelimitheader']);
+        $this->assertLessThan(array_search('modelsheader', $order), array_search('connectiontest', $order) ?: -1);
+        $this->assertGreaterThan(array_search('modelsheader', $order), array_search('models', $order));
+        $this->assertGreaterThan(array_search('ratelimitheader', $order), array_search('enableglobalratelimit', $order));
+
+        // A submitted value opens the section.
+        [$states] = $collapsed($this->submit_provider_form('[{"name": "llama3.1:8b", "type": "text"}]'));
+        $this->assertFalse($states['modelsheader']);
+    }
 }

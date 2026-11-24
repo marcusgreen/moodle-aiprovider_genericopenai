@@ -43,6 +43,14 @@ trait testcase_helper_trait {
             'userratelimit' => 1,
             'enableglobalratelimit' => true,
             'globalratelimit' => 1,
+            // No models are built in, so the image model used by the tests is described here.
+            'models' => json_encode([[
+                'name' => 'image-model',
+                'type' => 'image',
+                'outputformat' => 'png',
+                'sizes' => ['square' => '1024x1024', 'landscape' => '1536x1024', 'portrait' => '1024x1536'],
+                'quality' => ['standard' => 'medium', 'hd' => 'high'],
+            ]]),
         ];
         $defaultactionconfig = [
             $actionclass => [

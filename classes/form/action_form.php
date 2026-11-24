@@ -16,6 +16,7 @@
 
 namespace aiprovider_genericopenai\form;
 
+use aiprovider_genericopenai\aimodel\openai_base;
 use aiprovider_genericopenai\helper;
 use aiprovider_genericopenai\model_registry;
 use aiprovider_genericopenai\provider;
@@ -91,28 +92,30 @@ class action_form extends action_settings_form {
         if (isset($data->model)) {
             // Servers match model names exactly, so a pasted name must not keep stray spaces.
             $data->model = trim($data->model);
-            if ($data->modeltemplate === 'custom') {
-                $data->modelsettings['custom']['modelextraparams'] = $data->modelextraparams;
+            if (($data->modeltemplate ?? '') === 'custom') {
+                $data->modelsettings['custom']['modelextraparams'] = $data->modelextraparams ?? '';
             } else {
+                $modeldata = [];
                 $modelclass = helper::get_model_class($data->model, $this->get_provider());
-                if ($modelclass) {
-                    if ($modelclass->has_model_settings()) {
-                        $modelsettings = $modelclass->get_model_settings();
-                        $modelsettingskeys = array_keys($modelclass->get_model_settings());
-                        // Process the model settings.
-                        $modeldata = [];
-                        foreach ($data as $key => $value) {
-                            if (in_array($key, $modelsettingskeys)) {
-                                $type = $modelsettings[$key]['type'];
-                                // Cast form values to their intended types.
-                                $modeldata[$key] = $this->cast_value_to_type($value, $type);
-                                $data->$key = $this->cast_value_to_type($value, $type);
-                            }
-                        }
-                        if (!empty($modeldata)) {
-                            $data->modelsettings[$data->model] = $modeldata;
+                if ($modelclass && $modelclass->has_model_settings()) {
+                    $modelsettings = $modelclass->get_model_settings();
+                    $modelsettingskeys = array_keys($modelsettings);
+                    // Process the model settings.
+                    foreach ($data as $key => $value) {
+                        if (in_array($key, $modelsettingskeys)) {
+                            $type = $modelsettings[$key]['type'];
+                            // Cast form values to their intended types.
+                            $modeldata[$key] = $this->cast_value_to_type($value, $type);
+                            $data->$key = $this->cast_value_to_type($value, $type);
                         }
                     }
+                }
+                // Remembered per model, so the field is filled in again when the model is chosen.
+                if (!empty($data->modelextraparams)) {
+                    $modeldata['modelextraparams'] = $data->modelextraparams;
+                }
+                if (!empty($modeldata)) {
+                    $data->modelsettings[$data->model] = $modeldata;
                 }
             }
         }
@@ -140,7 +143,7 @@ class action_form extends action_settings_form {
         }
 
         // Validate the model.
-        if ($data['modeltemplate'] === 'custom' && trim($data['custommodel'] ?? '') === '') {
+        if (($data['modeltemplate'] ?? '') === 'custom' && trim($data['custommodel'] ?? '') === '') {
             $errors['custommodel'] = get_string('required');
         }
 
@@ -170,15 +173,16 @@ class action_form extends action_settings_form {
         $PAGE->requires->js_call_amd('aiprovider_genericopenai/modelchooser', 'init');
         $mform = $this->_form;
 
+        $savedmodel = $this->actionconfig['model'] ?? '';
+        $modellist = $this->get_model_list($modeltype);
+
         // Determine which model to use as the default.
-        if (!empty($this->actionconfig['model']) &&
-                (!array_key_exists($this->actionconfig['model'], $this->get_model_list($modeltype)) ||
-                !empty($this->actionconfig['modelextraparams']))) {
+        if ($savedmodel !== '' && !array_key_exists($savedmodel, $modellist)) {
             $defaultmodel = 'custom';
-        } else if (empty($this->actionconfig['model'])) {
+        } else if ($savedmodel === '') {
             $defaultmodel = model_registry::get_default_model($modeltype, $this->get_provider()) ?? model_registry::CUSTOM_MODEL;
         } else {
-            $defaultmodel = $this->actionconfig['model'];
+            $defaultmodel = $savedmodel;
         }
 
         // Get this model's stored values to assist model switching and value population in JS.
@@ -200,12 +204,28 @@ class action_form extends action_settings_form {
         $mform->setDefault('modeltemplate', $defaultmodel);
         $mform->addHelpButton('modeltemplate', "action:{$this->actionname}:model", 'aiprovider_genericopenai');
 
-        $mform->addElement('hidden', 'model', $defaultmodel);
+        // With only Custom to choose, say why the list is empty.
+        if (count($modellist) === 1) {
+            $identifier = $modeltype === openai_base::MODEL_TYPE_IMAGE ? 'nomodels:image' : 'nomodels:text';
+            $mform->addElement(
+                'static',
+                'nomodels',
+                '',
+                \html_writer::div(
+                    get_string($identifier, 'aiprovider_genericopenai', (new \moodle_url('/ai/configure.php', [
+                        'id' => $this->providerid,
+                    ]))->out()),
+                    'alert alert-info mb-0',
+                ),
+            );
+        }
+
+        $mform->addElement('hidden', 'model', $defaultmodel === model_registry::CUSTOM_MODEL ? $savedmodel : $defaultmodel);
         $mform->setType('model', PARAM_TEXT);
 
         $mform->addElement('text', 'custommodel', get_string('custom_model_name', 'aiprovider_genericopenai'));
         $mform->setType('custommodel', PARAM_TEXT);
-        $mform->setDefault('custommodel', $this->actionconfig['model'] ?? '');
+        $mform->setDefault('custommodel', $defaultmodel === model_registry::CUSTOM_MODEL ? $savedmodel : '');
         $mform->addHelpButton('custommodel', 'custom_model_name', 'aiprovider_genericopenai');
         $mform->hideIf('custommodel', 'modeltemplate', 'neq', 'custom');
 
@@ -237,6 +257,9 @@ class action_form extends action_settings_form {
     protected function get_provider(): ?provider {
         if (!isset($this->provider)) {
             $this->provider = helper::get_provider($this->providerid) ?? false;
+            if ($this->provider) {
+                model_registry::fetch_server_models($this->provider);
+            }
         }
         return $this->provider ?: null;
     }

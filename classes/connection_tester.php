@@ -41,10 +41,13 @@ final class connection_tester {
      * Constructor.
      *
      * @param provider $provider The provider instance to test.
+     * @param int $timeout Timeout in seconds for the models request.
      */
     public function __construct(
         /** @var provider The provider instance to test. */
         private readonly provider $provider,
+        /** @var int Timeout in seconds for the models request. */
+        private readonly int $timeout = self::TIMEOUT,
     ) {
     }
 
@@ -102,7 +105,7 @@ final class connection_tester {
         try {
             $response = $client->send($request, [
                 RequestOptions::HTTP_ERRORS => false,
-                RequestOptions::TIMEOUT => self::TIMEOUT,
+                RequestOptions::TIMEOUT => $this->timeout,
             ]);
         } catch (GuzzleException $e) {
             $result['message'] = get_string(
@@ -130,15 +133,16 @@ final class connection_tester {
             return $result;
         }
 
-        $models = $this->parse_models($body);
-        if ($models === null) {
+        $parsed = self::parse_models($body);
+        if ($parsed === null) {
             $result['message'] = get_string('connectiontest:invalidresponse', 'aiprovider_genericopenai', $url);
             return $result;
         }
 
+        ['models' => $models, 'kinds' => $kinds] = $parsed;
         $result['success'] = true;
         $result['models'] = $models;
-        model_registry::set_server_models($this->provider, $models);
+        model_registry::set_server_models($this->provider, $models, $kinds);
         $result['message'] = get_string('connectiontest:success', 'aiprovider_genericopenai', count($models));
 
         // A server that lists no models gives nothing to compare against.
@@ -158,27 +162,60 @@ final class connection_tester {
     }
 
     /**
-     * Get the model names from a models response body.
+     * Get the model names, and the kinds of model the server reports, from a models response body.
      *
      * The OpenAI format is {"data": [{"id": "gpt-4o", ...}, ...]}. Ollama, vLLM, LM Studio and LiteLLM use the same format.
      *
      * @param string $body The response body.
-     * @return string[]|null The sorted model names, or null if the body is not a models list.
+     * @return array{models: string[], kinds: string[]}|null The sorted model names, and the kind of each model the server
+     *     says is not a text model (see {@see get_model_kind()}), or null if the body is not a models list.
      */
-    private function parse_models(string $body): ?array {
+    private static function parse_models(string $body): ?array {
         $bodyobj = json_decode($body);
         if (!is_object($bodyobj) || !isset($bodyobj->data) || !is_array($bodyobj->data)) {
             return null;
         }
         $models = [];
+        $kinds = [];
         foreach ($bodyobj->data as $model) {
             if (is_object($model) && isset($model->id) && is_string($model->id)) {
                 $models[] = $model->id;
+                $kind = self::get_model_kind($model);
+                if ($kind !== model_registry::KIND_TEXT) {
+                    $kinds[$model->id] = $kind;
+                }
             }
         }
         $models = array_values(array_unique($models));
         sort($models, SORT_NATURAL | SORT_FLAG_CASE);
-        return $models;
+        return ['models' => $models, 'kinds' => $kinds];
+    }
+
+    /**
+     * Get the kind of a model from the fields some servers add to the OpenAI format.
+     *
+     * Most servers, including OpenAI, Groq and Ollama, give no kind, so a model is taken as text unless the server says
+     * otherwise. Model names are not used, as they change over time.
+     *
+     * - type, as given by Together AI (chat, language, code, image, embedding, ...) and LM Studio (llm, vlm, embeddings).
+     * - architecture.output_modalities, as given by OpenRouter (["text"], ["image"], ["text", "image"]).
+     *
+     * @param \stdClass $model A model from the models list.
+     * @return string model_registry::KIND_TEXT, KIND_IMAGE or KIND_OTHER.
+     */
+    private static function get_model_kind(\stdClass $model): string {
+        $type = is_string($model->type ?? null) ? strtolower($model->type) : '';
+        if ($type === 'image') {
+            return model_registry::KIND_IMAGE;
+        }
+        if (in_array($type, ['embedding', 'embeddings', 'moderation', 'rerank', 'audio', 'transcribe'], true)) {
+            return model_registry::KIND_OTHER;
+        }
+        $modalities = $model->architecture->output_modalities ?? null;
+        if (is_array($modalities) && $modalities && !in_array('text', $modalities, true)) {
+            return in_array('image', $modalities, true) ? model_registry::KIND_IMAGE : model_registry::KIND_OTHER;
+        }
+        return model_registry::KIND_TEXT;
     }
 
     /**

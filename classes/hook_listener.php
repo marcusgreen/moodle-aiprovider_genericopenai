@@ -81,10 +81,21 @@ class hook_listener {
         $mform->setDefault('allowinstructionoverride', 0);
         $mform->addHelpButton('allowinstructionoverride', 'allowinstructionoverride', 'aiprovider_genericopenai');
 
+        // The hook does not pass the instance, so take the id from the request as /ai/configure.php does.
+        $providerid = optional_param('id', 0, PARAM_INT);
+        helper::add_connection_test($mform, $providerid);
+
+        // Few instances need model descriptions, so the section starts collapsed unless the instance has some.
+        $mform->addElement('header', 'modelsheader', get_string('modelsheader', 'aiprovider_genericopenai'));
+        $saved = helper::get_provider($providerid)?->config[model_registry::CONFIG_KEY] ?? '';
+        $submitted = optional_param(model_registry::CONFIG_KEY, '', PARAM_RAW);
+        $mform->setExpanded('modelsheader', trim($saved) !== '' || trim($submitted) !== '');
         self::add_models_setting($mform);
 
-        // The hook does not pass the instance, so take the id from the request as /ai/configure.php does.
-        helper::add_connection_test($mform, optional_param('id', 0, PARAM_INT));
+        // Core adds the rate limit settings after this hook. Without a header of their own they would be in the
+        // collapsed models section.
+        $mform->addElement('header', 'ratelimitheader', get_string('ratelimitheader', 'aiprovider_genericopenai'));
+        $mform->setExpanded('ratelimitheader');
     }
 
     /**
@@ -95,29 +106,57 @@ class hook_listener {
     private static function add_models_setting(\MoodleQuickForm $mform): void {
         global $PAGE;
 
-        $mform->addElement(
-            'textarea',
-            model_registry::CONFIG_KEY,
-            get_string('models', 'aiprovider_genericopenai'),
-            ['rows' => 10, 'cols' => 60, 'class' => 'text-monospace', 'spellcheck' => 'false'],
-        );
-        $mform->setType(model_registry::CONFIG_KEY, PARAM_RAW);
-        $mform->addHelpButton(model_registry::CONFIG_KEY, 'models', 'aiprovider_genericopenai');
-
+        // Models are usually described in a file, so loading one comes first. The setting below shows what is saved.
         $PAGE->requires->js_call_amd('aiprovider_genericopenai/modelsfile', 'init');
         $mform->addElement(
             'static',
             'modelsfile',
             get_string('modelsfile', 'aiprovider_genericopenai'),
-            \html_writer::empty_tag('input', [
-                'type' => 'file',
-                'accept' => '.json,application/json',
-                'class' => 'form-control',
-                'data-action' => 'aiprovider_genericopenai-loadmodels',
-                'data-target' => 'id_' . model_registry::CONFIG_KEY,
-            ]),
+            // The file is read in the browser into the setting below, so the native input is hidden behind a button
+            // worded like the Moodle file picker.
+            \html_writer::div(
+                \html_writer::empty_tag('input', [
+                    'type' => 'file',
+                    'accept' => '.json,application/json',
+                    'class' => 'd-none',
+                    'id' => 'id_modelsfile_input',
+                    'data-action' => 'aiprovider_genericopenai-loadmodels',
+                    'data-target' => 'id_' . model_registry::CONFIG_KEY,
+                ]) .
+                \html_writer::tag('button', get_string('openpicker', 'repository'), [
+                    'type' => 'button',
+                    'class' => 'btn btn-secondary',
+                    'data-action' => 'aiprovider_genericopenai-choosemodelsfile',
+                    'aria-controls' => 'id_modelsfile_input',
+                ]) .
+                \html_writer::span('', 'aiprovider_genericopenai-modelsfilename text-muted', [
+                    'data-region' => 'aiprovider_genericopenai-modelsfilename',
+                    'aria-live' => 'polite',
+                ]),
+                'd-flex align-items-center gap-2',
+            ),
         );
         $mform->addHelpButton('modelsfile', 'modelsfile', 'aiprovider_genericopenai');
+
+        $mform->addElement(
+            'textarea',
+            model_registry::CONFIG_KEY,
+            get_string('models', 'aiprovider_genericopenai'),
+            [
+                'rows' => 4,
+                'cols' => 60,
+                'class' => 'text-monospace',
+                'spellcheck' => 'false',
+                'placeholder' => get_string('models_placeholder', 'aiprovider_genericopenai'),
+            ],
+        );
+        $mform->setType(model_registry::CONFIG_KEY, PARAM_RAW);
+        $mform->addHelpButton(model_registry::CONFIG_KEY, 'models', 'aiprovider_genericopenai');
+        $PAGE->requires->js_call_amd(
+            'aiprovider_genericopenai/jsonfield',
+            'init',
+            ['id_' . model_registry::CONFIG_KEY, 'models.json'],
+        );
 
         // A rule message is fixed when the rule is added, so the errors are worked out from the submitted value here.
         $submitted = optional_param(model_registry::CONFIG_KEY, null, PARAM_RAW);
@@ -137,6 +176,8 @@ class hook_listener {
      * @param after_ai_action_settings_form_hook $hook The hook to add to config action settings.
      */
     public static function set_model_form_definition_for_aiprovider_genericopenai(after_ai_action_settings_form_hook $hook): void {
+        global $PAGE;
+
         if ($hook->plugin !== 'aiprovider_genericopenai') {
             return;
         }
@@ -148,31 +189,34 @@ class hook_listener {
                 $model = $model[0];
             }
 
-            if ($model == 'custom') {
-                $mform->addElement('header', 'modelsettingsheader', get_string('settings', 'aiprovider_genericopenai'));
-                $settingshelp = \html_writer::tag('p', get_string('settings_help', 'aiprovider_genericopenai'));
-                $mform->addElement('html', $settingshelp);
-                $mform->addElement(
-                    'textarea',
-                    'modelextraparams',
-                    get_string('extraparams', 'aiprovider_genericopenai'),
-                    ['rows' => 5, 'cols' => 20],
-                );
-                $mform->setType('modelextraparams', PARAM_TEXT);
-                $mform->addElement('static', 'modelextraparams_help', null, get_string('extraparams_help', 'aiprovider_genericopenai'));
-            } else {
+            $mform->addElement('header', 'modelsettingsheader', get_string('settings', 'aiprovider_genericopenai'));
+            $settingshelp = \html_writer::tag('p', get_string('settings_help', 'aiprovider_genericopenai'));
+            $mform->addElement('html', $settingshelp);
+
+            // A model described in the models setting can have its own settings fields.
+            if ($model != 'custom') {
                 // The action form adds the provider id as a hidden field before the hook runs.
                 $providerid = isset($mform->_elementIndex['providerid']) ? (int) $mform->getElementValue('providerid') : 0;
                 $targetmodel = helper::get_model_class($model, helper::get_provider($providerid));
-                if ($targetmodel) {
-                    if ($targetmodel->has_model_settings()) {
-                        $mform->addElement('header', 'modelsettingsheader', get_string('settings', 'aiprovider_genericopenai'));
-                        $settingshelp = \html_writer::tag('p', get_string('settings_help', 'aiprovider_genericopenai'));
-                        $mform->addElement('html', $settingshelp);
-                        $targetmodel->add_model_settings($mform);
-                    }
+                if ($targetmodel && $targetmodel->has_model_settings()) {
+                    $targetmodel->add_model_settings($mform);
                 }
             }
+
+            // Most models come from the server list and have no settings fields, so any model can have extra parameters.
+            $mform->addElement(
+                'textarea',
+                'modelextraparams',
+                get_string('extraparams', 'aiprovider_genericopenai'),
+                [
+                    'rows' => 5,
+                    'cols' => 20,
+                    'placeholder' => get_string('extraparams_placeholder', 'aiprovider_genericopenai'),
+                ],
+            );
+            $mform->setType('modelextraparams', PARAM_TEXT);
+            $PAGE->requires->js_call_amd('aiprovider_genericopenai/jsonfield', 'init', ['id_modelextraparams']);
+            $mform->addElement('static', 'modelextraparams_help', null, get_string('extraparams_help', 'aiprovider_genericopenai'));
         }
     }
 }

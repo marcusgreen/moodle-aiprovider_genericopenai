@@ -22,12 +22,13 @@ use aiprovider_genericopenai\aimodel\openai_base;
 /**
  * The AI models offered by a provider instance.
  *
- * The bundled models are in db/models.json. A provider instance can add to them, or replace them, with the JSON in its
- * models setting:
+ * The models are those the API server lists (see {@see fetch_server_models()}), and those described in the models setting
+ * of the provider instance:
  *
- *     {"mode": "extend", "models": [{"name": "llama3.1:8b", "type": "text"}, ...]}
+ *     [{"name": "llama3.1:8b", "type": "text"}, ...]
  *
- * A plain list of models is the same as mode extend. In extend mode a model with the name of a bundled model replaces it.
+ * The setting may also be an object with the list as its models value. No model names are built in, as the models a
+ * server offers change over time.
  *
  * @package    aiprovider_genericopenai
  * @copyright  2026 Marcus Green
@@ -39,6 +40,18 @@ final class model_registry {
 
     /** @var string Model option in the action settings form for a model name typed by the admin. */
     public const CUSTOM_MODEL = 'custom';
+
+    /** @var string Kind of a server model that is taken as a text model, which is any model the server gives no kind for. */
+    public const KIND_TEXT = 'text';
+
+    /** @var string Kind of a server model the server says makes images. */
+    public const KIND_IMAGE = 'image';
+
+    /** @var string Kind of a server model the server says is neither for text nor images, such as an embedding model. */
+    public const KIND_OTHER = 'other';
+
+    /** @var int Timeout in seconds for the models request made when an action settings form is shown. */
+    private const FETCH_TIMEOUT = 5;
 
     /** @var int The most errors reported for one JSON value. */
     private const MAX_ERRORS = 5;
@@ -58,16 +71,13 @@ final class model_registry {
     /** @var string[] Quality options an image model must map to an API value. */
     private const QUALITIES = ['standard', 'hd'];
 
-    /** @var array|null The bundled model definitions. */
-    private static ?array $bundled = null;
-
     /** @var configured_model[][] Models keyed by a hash of the provider instance models setting, then by name. */
     private static array $cache = [];
 
     /**
-     * Get the models offered by a provider instance.
+     * Get the models described in the models setting of a provider instance.
      *
-     * @param \core_ai\provider|null $provider The provider instance, or null for the bundled models only.
+     * @param \core_ai\provider|null $provider The provider instance, or null for none.
      * @return configured_model[] Models keyed by name, in the order they are offered.
      */
     public static function get_models(?\core_ai\provider $provider = null): array {
@@ -75,7 +85,7 @@ final class model_registry {
         $cachekey = sha1($json);
         if (!isset(self::$cache[$cachekey])) {
             $models = [];
-            foreach (self::get_definitions($json) as $definition) {
+            foreach (self::decode_json($json)['models'] ?? [] as $definition) {
                 $models[$definition['name']] = new configured_model($definition);
             }
             self::$cache[$cachekey] = $models;
@@ -87,8 +97,8 @@ final class model_registry {
      * Get a model by name.
      *
      * @param string $name The model name.
-     * @param \core_ai\provider|null $provider The provider instance, or null for the bundled models only.
-     * @return configured_model|null The model, or null if it is not offered (for example a custom model).
+     * @param \core_ai\provider|null $provider The provider instance, or null for none.
+     * @return configured_model|null The model, or null if it is not in the models setting.
      */
     public static function get_model(string $name, ?\core_ai\provider $provider = null): ?configured_model {
         return self::get_models($provider)[$name] ?? null;
@@ -98,7 +108,7 @@ final class model_registry {
      * Get the models of one type.
      *
      * @param int $type openai_base::MODEL_TYPE_TEXT or openai_base::MODEL_TYPE_IMAGE.
-     * @param \core_ai\provider|null $provider The provider instance, or null for the bundled models only.
+     * @param \core_ai\provider|null $provider The provider instance, or null for none.
      * @return configured_model[] Models keyed by name.
      */
     public static function get_models_of_type(int $type, ?\core_ai\provider $provider = null): array {
@@ -111,43 +121,42 @@ final class model_registry {
     /**
      * Get the name of the default model of a type.
      *
-     * This is the model marked as default, or else the first model of the type.
+     * This is the model in the models setting marked as default, or else the first model offered for the type.
      *
      * @param int $type openai_base::MODEL_TYPE_TEXT or openai_base::MODEL_TYPE_IMAGE.
-     * @param \core_ai\provider|null $provider The provider instance, or null for the bundled models only.
+     * @param \core_ai\provider|null $provider The provider instance, or null for none.
      * @return string|null The model name, or null if no model of the type is offered.
      */
     public static function get_default_model(int $type, ?\core_ai\provider $provider = null): ?string {
-        $models = self::get_models_of_type($type, $provider);
-        foreach ($models as $name => $model) {
+        foreach (self::get_models_of_type($type, $provider) as $name => $model) {
             if ($model->is_default()) {
                 return $name;
             }
         }
-        return array_key_first($models);
+        return array_key_first(self::get_model_options($type, $provider));
     }
 
     /**
      * Get the options for an AI model dropdown.
      *
-     * These are the models of the type, then the models last listed by the API server (see {@see set_server_models()})
-     * that are not in the model lists. The type of a server model is not known, so those are offered as text models.
+     * These are the models of the type in the models setting, then the models of the type last listed by the API server
+     * (see {@see set_server_models()}) that are not in the setting. Most servers do not say what a model is for, so a
+     * server model is offered as a text model unless the server says it makes images, or is for something else.
      *
      * @param int $type openai_base::MODEL_TYPE_TEXT or openai_base::MODEL_TYPE_IMAGE.
-     * @param provider|null $provider The provider instance, or null for the bundled models only.
+     * @param \core_ai\provider|null $provider The provider instance, or null for none.
      * @return string[] Display names keyed by model name.
      */
-    public static function get_model_options(int $type, ?provider $provider = null): array {
+    public static function get_model_options(int $type, ?\core_ai\provider $provider = null): array {
         $options = array_map(
             fn(configured_model $model): string => $model->get_model_display_name(),
             self::get_models_of_type($type, $provider),
         );
-        if ($type === openai_base::MODEL_TYPE_TEXT) {
-            $known = self::get_models($provider);
-            foreach (self::get_server_models($provider) as $name) {
-                if (!isset($known[$name])) {
-                    $options[$name] = $name;
-                }
+        $kind = $type === openai_base::MODEL_TYPE_IMAGE ? self::KIND_IMAGE : self::KIND_TEXT;
+        $known = self::get_models($provider);
+        foreach (self::get_server_models($provider, $kind) as $name) {
+            if (!isset($known[$name])) {
+                $options[$name] = $name;
             }
         }
         return $options;
@@ -158,15 +167,36 @@ final class model_registry {
      *
      * @param provider $provider The provider instance.
      * @param string[] $models The model names.
+     * @param string[] $kinds KIND_IMAGE or KIND_OTHER, keyed by model name, for models the server says are not text models.
      */
-    public static function set_server_models(provider $provider, array $models): void {
+    public static function set_server_models(provider $provider, array $models, array $kinds = []): void {
         if (empty($provider->id)) {
             return;
         }
         \cache::make('aiprovider_genericopenai', 'servermodels')->set($provider->id, [
             'connection' => self::get_connection_hash($provider),
             'models' => array_values($models),
+            'kinds' => $kinds,
         ]);
+    }
+
+    /**
+     * Ask the API server of a provider instance for its models, if they are not known.
+     *
+     * Used when an action settings form is shown, so the AI model dropdown offers the models of the server without the
+     * connection being tested first. A failed request is remembered as an empty list, so it is not repeated on every
+     * page until the list expires or the connection is tested.
+     *
+     * @param provider $provider The provider instance.
+     */
+    public static function fetch_server_models(provider $provider): void {
+        if (empty($provider->id) || !$provider->is_provider_configured() || self::get_cached_server_models($provider) !== null) {
+            return;
+        }
+        $result = (new connection_tester($provider, self::FETCH_TIMEOUT))->test();
+        if (!$result['success']) {
+            self::set_server_models($provider, []);
+        }
     }
 
     /**
@@ -174,18 +204,40 @@ final class model_registry {
      *
      * A list from before the API endpoint or key was changed is not used.
      *
-     * @param provider|null $provider The provider instance.
+     * @param \core_ai\provider|null $provider The provider instance.
+     * @param string|null $kind KIND_TEXT, KIND_IMAGE or KIND_OTHER for only the models of that kind, or null for all.
      * @return string[] The model names, empty if the server has not been asked recently.
      */
-    public static function get_server_models(?provider $provider): array {
-        if (empty($provider->id)) {
+    public static function get_server_models(?\core_ai\provider $provider, ?string $kind = null): array {
+        if (!$provider instanceof provider || empty($provider->id)) {
             return [];
         }
+        $cached = self::get_cached_server_models($provider);
+        if ($cached === null) {
+            return [];
+        }
+        if ($kind === null) {
+            return $cached['models'];
+        }
+        $kinds = $cached['kinds'] ?? [];
+        return array_values(array_filter(
+            $cached['models'],
+            fn(string $name): bool => ($kinds[$name] ?? self::KIND_TEXT) === $kind,
+        ));
+    }
+
+    /**
+     * Get the remembered server models of a saved provider instance.
+     *
+     * @param provider $provider The provider instance.
+     * @return array|null The models and kinds keys, or null if none are remembered for the current endpoint and key.
+     */
+    private static function get_cached_server_models(provider $provider): ?array {
         $cached = \cache::make('aiprovider_genericopenai', 'servermodels')->get($provider->id);
         if (!is_array($cached) || ($cached['connection'] ?? null) !== self::get_connection_hash($provider)) {
-            return [];
+            return null;
         }
-        return $cached['models'];
+        return $cached;
     }
 
     /**
@@ -201,7 +253,7 @@ final class model_registry {
     /**
      * Check a models setting.
      *
-     * @param string $json The JSON entered in the models setting. An empty value is valid and means the bundled models.
+     * @param string $json The JSON entered in the models setting. An empty value is valid and means no models.
      * @return string[] Error messages, empty if the value is valid.
      */
     public static function validate_json(string $json): array {
@@ -221,12 +273,7 @@ final class model_registry {
         if (!isset($data['models']) || !is_array($data['models']) || !array_is_list($data['models'])) {
             return [get_string('models:error:structure', 'aiprovider_genericopenai')];
         }
-        $errors = [];
-        if (isset($data['mode']) && !in_array($data['mode'], ['extend', 'replace'], true)) {
-            $errors[] = get_string('models:error:mode', 'aiprovider_genericopenai');
-        }
-        $errors = array_merge($errors, self::validate_definitions($data['models']));
-        return array_slice($errors, 0, self::MAX_ERRORS);
+        return array_slice(self::validate_definitions($data['models']), 0, self::MAX_ERRORS);
     }
 
     /**
@@ -389,56 +436,21 @@ final class model_registry {
     }
 
     /**
-     * Get the bundled model definitions.
-     *
-     * @return array
-     */
-    public static function get_bundled_definitions(): array {
-        if (self::$bundled === null) {
-            $json = file_get_contents(__DIR__ . '/../db/models.json');
-            self::$bundled = json_decode($json, true, 512, JSON_THROW_ON_ERROR)['models'];
-        }
-        return self::$bundled;
-    }
-
-    /**
-     * Get the model definitions for a models setting, combined with the bundled models.
+     * Decode a models setting, with a plain list of models given as an object with a models key.
      *
      * @param string $json The JSON of the models setting.
-     * @return array Model definitions, in the order they are offered.
+     * @return array|null The setting with a models key, or null if it is empty or not valid.
      */
-    private static function get_definitions(string $json): array {
-        $bundled = self::get_bundled_definitions();
+    private static function decode_json(string $json): ?array {
         if ($json === '') {
-            return $bundled;
+            return null;
         }
         if (!self::is_valid_json($json)) {
             // The setting is checked when the instance is saved, so this only happens if the config was changed directly.
             debugging('aiprovider_genericopenai: the models setting is not valid and has been ignored.', DEBUG_DEVELOPER);
-            return $bundled;
+            return null;
         }
-
         $data = json_decode($json, true);
-        if (array_is_list($data)) {
-            $data = ['models' => $data];
-        }
-        $own = $data['models'];
-        if (($data['mode'] ?? 'extend') === 'replace') {
-            return $own;
-        }
-
-        // A default set by the instance replaces the bundled default of the same type.
-        $owndefaulttypes = array_column(array_filter($own, fn($model) => !empty($model['default'])), 'type');
-        $definitions = [];
-        foreach ($bundled as $definition) {
-            if (in_array($definition['type'], $owndefaulttypes, true)) {
-                unset($definition['default']);
-            }
-            $definitions[$definition['name']] = $definition;
-        }
-        foreach ($own as $definition) {
-            $definitions[$definition['name']] = $definition;
-        }
-        return array_values($definitions);
+        return array_is_list($data) ? ['models' => $data] : $data;
     }
 }

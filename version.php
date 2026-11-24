@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'aiprovider_genericopenai';
-$plugin->version = 2026112404;
+$plugin->version = 2026112405;
 $plugin->requires = 2026041000;
 $plugin->maturity = MATURITY_ALPHA;
 $plugin->release = '0.1';

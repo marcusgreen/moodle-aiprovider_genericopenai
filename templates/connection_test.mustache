@@ -21,17 +21,15 @@
 
     Context variables required for this template:
     * providerid - The provider instance id.
-    * modeltype - On an action form, the type of AI model dropdown to fill with the models found (1 text, 2 image), else 0.
 
     Example context (json):
     {
-        "providerid": 1,
-        "modeltype": 1
+        "providerid": 1
     }
 }}
 <div class="aiprovider_genericopenai-connectiontest mb-3" data-region="aiprovider_genericopenai-connectiontest">
     <button type="button" class="btn btn-secondary" data-action="aiprovider_genericopenai-testconnection"
-            data-providerid="{{providerid}}" data-modeltype="{{modeltype}}">
+            data-providerid="{{providerid}}">
         {{#str}} connectiontest, aiprovider_genericopenai {{/str}}
     </button>
     <div class="form-text text-muted">{{#str}} connectiontest_desc, aiprovider_genericopenai {{/str}}</div>

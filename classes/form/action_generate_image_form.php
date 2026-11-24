@@ -17,7 +17,6 @@
 namespace aiprovider_genericopenai\form;
 
 use aiprovider_genericopenai\aimodel\openai_base;
-use aiprovider_genericopenai\helper;
 
 /**
  * Generate image action provider settings form.
@@ -44,8 +43,6 @@ class action_generate_image_form extends action_form {
         $mform->setType('endpoint', PARAM_URL);
         $mform->setDefault('endpoint', $this->actionconfig['endpoint'] ?? '');
         $mform->addHelpButton('endpoint', "action:{$this->actionname}:endpoint", 'aiprovider_genericopenai');
-
-        helper::add_connection_test($mform, $this->providerid, openai_base::MODEL_TYPE_IMAGE);
 
         if ($this->returnurl) {
             $mform->addElement('hidden', 'returnurl', $this->returnurl);

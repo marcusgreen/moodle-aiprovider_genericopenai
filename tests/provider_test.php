@@ -169,6 +169,46 @@ final class provider_test extends \advanced_testcase {
     }
 
     /**
+     * Test get_api_endpoint returns the base URL, removing a trailing slash or action path.
+     *
+     * @dataProvider get_api_endpoint_provider
+     * @param string $configured The configured API endpoint.
+     * @param string $expected The expected base endpoint.
+     */
+    #[DataProvider('get_api_endpoint_provider')]
+    public function test_get_api_endpoint(string $configured, string $expected): void {
+        $provider = $this->manager->update_provider_instance(
+            provider: $this->provider,
+            config: ['apikey' => '123', 'apiendpoint' => $configured],
+        );
+
+        $this->assertEquals($expected, $provider->get_api_endpoint());
+    }
+
+    /**
+     * Data provider for test_get_api_endpoint.
+     *
+     * @return array
+     */
+    public static function get_api_endpoint_provider(): array {
+        return [
+            'Base' => ['https://api.openai.com/v1', 'https://api.openai.com/v1'],
+            'Trailing slash' => [' https://api.openai.com/v1/ ', 'https://api.openai.com/v1'],
+            'Chat completions' => [
+                'https://api.groq.com/openai/v1/chat/completions',
+                'https://api.groq.com/openai/v1',
+            ],
+            'Chat completions with slash' => [
+                'https://api.groq.com/openai/v1/chat/completions/',
+                'https://api.groq.com/openai/v1',
+            ],
+            'Image generations' => ['https://api.openai.com/v1/images/generations', 'https://api.openai.com/v1'],
+            'Models' => ['http://localhost:11434/v1/models', 'http://localhost:11434/v1'],
+            'Empty' => ['', ''],
+        ];
+    }
+
+    /**
      * Test add_authentication_headers only sends the organization header when an ID is set.
      *
      * @dataProvider add_authentication_headers_provider

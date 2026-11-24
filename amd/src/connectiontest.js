@@ -31,44 +31,18 @@ const Selectors = {
     button: '[data-action="aiprovider_genericopenai-testconnection"]',
     container: '[data-region="aiprovider_genericopenai-connectiontest"]',
     result: '[data-region="aiprovider_genericopenai-connectiontest-result"]',
-    modelSelector: '[data-modelchooser-field="selector"]',
 };
-
-/** @var {String} The AI model option for a model name typed by the admin. */
-const CUSTOM_MODEL = 'custom';
 
 /**
  * Call the test connection web service.
  *
  * @param {Number} providerid The provider instance id.
- * @param {Number} modeltype The type of AI model dropdown to get options for, or 0 for none.
  * @returns {Promise}
  */
-const testConnection = (providerid, modeltype) => fetchMany([{
+const testConnection = (providerid) => fetchMany([{
     methodname: 'aiprovider_genericopenai_test_connection',
-    args: {providerid, modeltype},
+    args: {providerid},
 }])[0];
-
-/**
- * Replace the options of the AI model dropdown, keeping Custom and the selected model.
- *
- * The page is not reloaded, so other fields keep any changes. The selection is not changed.
- *
- * @param {HTMLSelectElement} select The AI model dropdown.
- * @param {Array} options The new options, each with value and label.
- * @returns {Boolean} Whether the options changed.
- */
-const updateModelOptions = (select, options) => {
-    const before = Array.from(select.options).map((option) => option.value).join('\n');
-    const selected = select.value;
-    const keep = Array.from(select.options).filter((option) => option.value === CUSTOM_MODEL ||
-        (option.value === selected && !options.some((newoption) => newoption.value === selected)));
-
-    select.replaceChildren(...keep, ...options.map(({value, label}) => new Option(label, value)));
-    select.value = selected;
-
-    return Array.from(select.options).map((option) => option.value).join('\n') !== before;
-};
 
 /**
  * Run the test for a button and show the result.
@@ -82,17 +56,10 @@ const runTest = async(button) => {
     result.innerHTML = '';
     addIconToContainer(result);
     try {
-        const response = await testConnection(
-            parseInt(button.dataset.providerid, 10),
-            parseInt(button.dataset.modeltype || '0', 10),
-        );
-        const select = button.closest('form')?.querySelector(Selectors.modelSelector);
-        const optionsupdated = response.success && select && response.options.length > 0 &&
-            updateModelOptions(select, response.options);
+        const response = await testConnection(parseInt(button.dataset.providerid, 10));
         const {html, js} = await Templates.renderForPromise('aiprovider_genericopenai/connection_test_result', {
             ...response,
             hasmodels: response.models.length > 0,
-            optionsupdated,
         });
         Templates.replaceNodeContents(result, html, js);
     } catch (error) {

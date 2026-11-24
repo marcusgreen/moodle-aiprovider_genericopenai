@@ -30,6 +30,8 @@ $definitions = [
         'mode' => cache_store::MODE_APPLICATION,
         'simplekeys' => true,
         'simpledata' => false,
-        'ttl' => HOURSECS,
+        // Refreshed every hour by the refresh_server_models task. Kept for a day so a server that is down for a while
+        // leaves the last list in place.
+        'ttl' => DAYSECS,
     ],
 ];

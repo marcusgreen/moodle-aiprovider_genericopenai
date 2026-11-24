@@ -1,4 +1,4 @@
-# Generic OpenAI compatible API provider – User guide
+# Generic OpenAI API provider – User guide
 
 Component: `aiprovider_genericopenai`
 
@@ -42,7 +42,7 @@ such as the AI Text question type, can call them too.
 ## Creating a provider instance
 
 1. Go to **Site administration > General > AI > AI providers**.
-2. Click **Create a new provider instance** and choose **Generic OpenAI compatible API provider**.
+2. Click **Create a new provider instance** and choose **Generic OpenAI API provider**.
 3. Fill in the settings below and save.
 4. Enable the instance with the toggle in the provider list.
 
@@ -54,12 +54,15 @@ Ollama server.
 | Setting | Required | Description |
 |---------|----------|-------------|
 | Name | Yes | A name for this instance, shown in the provider list. |
-| API endpoint | Yes | The base URL of the API, without the action path. Defaults to `https://api.openai.com/v1`. A trailing slash is removed. |
+| API endpoint | Yes | The base URL of the API, without the action path. Defaults to `https://api.openai.com/v1`. A trailing slash is removed, as is a trailing `/chat/completions`, `/images/generations` or `/models`, so a full URL such as `https://api.groq.com/openai/v1/chat/completions` also works. |
 | API key | Yes | Sent as `Authorization: Bearer <key>`. If your server does not check keys (for example a local Ollama), enter any value. |
 | Organization ID | No | Sent in the `OpenAI-Organization` header. Leave empty if your service does not use it. |
 | Allow plugins to override the system instruction | No | Off by default. See [System instruction override](#system-instruction-override). |
-| Models | No | JSON list of models to offer in the action settings. Empty means the bundled OpenAI models. See [Model lists](#model-lists). |
+| Models | No | JSON list describing models, for display names, settings, defaults and image models. The AI model dropdowns already offer the models the server lists. See [Model lists](#model-lists). |
 | Load models from file | No | Puts the content of a JSON file into **Models**. The file is not stored. |
+
+**Models** and **Load models from file** are in the **Model descriptions** section, which starts collapsed
+unless the instance has model descriptions. The core rate limit settings follow in **Rate limits**.
 
 The instance counts as configured only when both the API endpoint and the API key are set.
 
@@ -68,6 +71,7 @@ The instance counts as configured only when both the API endpoint and the API ke
 | Service    | API endpoint                   |
 |------------|--------------------------------|
 | OpenAI     | `https://api.openai.com/v1`    |
+| Groq       | `https://api.groq.com/openai/v1` |
 | Ollama     | `http://localhost:11434/v1`    |
 | LM Studio  | `http://localhost:1234/v1`     |
 | vLLM       | `http://localhost:8000/v1`     |
@@ -82,25 +86,20 @@ After the instance is created, open its settings and use the **Settings** link n
 
 | Setting | Description |
 |---------|-------------|
-| AI model | Pick a listed model or **Custom**. The bundled list is GPT-6.2 Astra, GPT-6.2 Sol, GPT-6.1 Terra and GPT-6 Luna (default). Models are taken off the list once OpenAI announces a shutdown date. An instance can change it with its [model list](#model-lists). |
+| AI model | Pick a model the server lists, or **Custom**. No model names are built into the plugin, as the models a service offers change over time. See [Where the model list comes from](#where-the-model-list-comes-from). |
 | Custom model name | Shown when **Custom** is chosen. Enter the model name exactly as the service expects it, for example `llama3.1:8b` or `meta-llama/Llama-3.1-8B-Instruct`. |
 | API endpoint | Optional. A full URL for this action only. If empty, `/chat/completions` is added to the provider API endpoint. |
 | System instruction | Sent to the model as a `system` message before the user prompt. If empty, no system message is sent. Changing it is not recommended unless needed. Plugins can replace it if the instance allows it (see [System instruction override](#system-instruction-override)). |
 
 #### Model settings
 
-Listed models show extra settings that are sent with each request. Leave a field empty to use the
-service default.
+A model described in the instance [model list](#model-lists) can show extra settings, such as
+`max_completion_tokens`, `top_p`, `temperature` or `reasoning_effort`, that are sent with each request. Leave a
+field empty to use the service default.
 
-| Setting | Description |
-|---------|-------------|
-| `max_completion_tokens` | The most tokens the model may generate. |
+#### Extra parameters
 
-A [model list](#model-lists) can add other settings, such as `top_p`, `temperature` or `reasoning_effort`.
-
-#### Extra parameters (custom models)
-
-With **Custom** chosen, the **Extra parameters** field takes a JSON object. Each key is added to the request
+For any model, the **Extra parameters** field takes a JSON object. Each key is added to the request
 body as is. For example:
 
 ```json
@@ -117,22 +116,22 @@ reject unknown keys.
 
 | Setting | Description |
 |---------|-------------|
-| AI model | Pick a listed model or **Custom**. The bundled list is GPT Image 2.6 Sunburst (default) and GPT Image 2.6 Flare. An instance can change it with its [model list](#model-lists). |
+| AI model | Pick an image model, or **Custom**. Listed are the models the server marks as image models, and those described as `image` in the instance [model list](#model-lists). Most servers do not mark them. See [Text and image models](#text-and-image-models). |
 | Custom model name | Model name for a custom image model. |
 | API endpoint | Optional. A full URL for this action only. If empty, `/images/generations` is added to the provider API endpoint. |
-| Extra parameters | JSON, as for text actions (custom models only). |
+| Extra parameters | JSON, as for text actions. |
 
 The aspect ratio and quality chosen by the user are mapped to values the model accepts:
 
-| Option           | GPT Image 2.6 / custom |
-|------------------|------------------------|
-| Square           | `1024x1024`            |
-| Landscape        | `1536x1024`            |
-| Portrait         | `1024x1536`            |
-| Standard quality | `medium`               |
-| HD quality       | `high`                 |
+| Option           | Custom model |
+|------------------|--------------|
+| Square           | `1024x1024`  |
+| Landscape        | `1536x1024`  |
+| Portrait         | `1024x1536`  |
+| Standard quality | `medium`     |
+| HD quality       | `high`       |
 
-A [model list](#model-lists) can set other values for its image models.
+An image model in the [model list](#model-lists) sets its own values.
 
 The plugin accepts an image returned either as base64 (`b64_json`) or as a URL. A URL is downloaded through
 Moodle's HTTP client, so the HTTP security settings apply. Every image gets the AI watermark and is saved to
@@ -140,16 +139,48 @@ the user's draft file area.
 
 ## Model lists
 
-The models in the **AI model** dropdowns are defined in JSON. The plugin bundles the OpenAI models in
-`db/models.json`. Each provider instance can add to that list, or replace it, with its **Models** setting.
-This is useful for servers such as Ollama or vLLM, whose models are not in the bundled list.
+### Where the model list comes from
 
-Type the JSON into **Models**, or choose a file with **Load models from file**. The JSON is checked when the
-instance is saved, and any problems are shown on the field.
+No model names are built into the plugin. The **AI model** dropdowns offer:
+
+1. the models described in the instance **Models** setting, with their display names, and
+2. the models the server lists at `GET {API endpoint}/models`.
+
+The server list is refreshed every hour for each enabled instance by the scheduled task **Refresh the model
+lists of Generic OpenAI API provider instances**, and by **Test connection and get models**. If the
+task cannot reach the server, the last list is kept. A list is kept for a day at most, and is not used once the
+API endpoint or key is changed.
+
+If no list is known when an action settings page is opened, the page asks the server, waiting up to 5 seconds.
+A failure is remembered, so pages are not slowed by repeated attempts. Use **Test connection and get models** to
+see the error and try again.
+
+#### Text and image models
+
+Most servers, including OpenAI, Groq and Ollama, list only model names, so their models are offered as text
+models. Where a server says what a model is for, that is used:
+
+| Server | Field | Image models | Left out |
+|--------|-------|--------------|----------|
+| Together AI, LM Studio | `type` | `image` | `embedding`, `embeddings`, `moderation`, `rerank`, `audio`, `transcribe` |
+| OpenRouter | `architecture.output_modalities` | only `image` | no `text` and no `image` |
+
+Model names are not used to guess, as they change over time. To offer an image model the server does not mark,
+describe it in the [model list](#model-lists).
+
+With no model marked default, a new action uses the first model offered.
+
+### Describing models
+
+The **Models** setting describes models in JSON. It is only needed to give a model a display name, settings or
+a default, or to offer an image model.
+
+Choose a file with **Load models from file**, or type the JSON into **Models**. **Models** shows what is saved:
+**Format JSON** tidies its layout, and **Download JSON** saves it as `models.json` to edit and load again. The JSON
+is checked as it is typed and again when the instance is saved, and any problems are shown on the field.
 
 ```json
 {
-    "mode": "replace",
     "models": [
         {
             "name": "llama3.1:8b",
@@ -175,24 +206,24 @@ instance is saved, and any problems are shown on the field.
 
 | Key | Description |
 |-----|-------------|
-| `mode` | `extend` (the default) adds to the bundled models, and a model with the name of a bundled model replaces it. `replace` offers only these models. A plain list of models, without `mode`, means `extend`. |
 | `name` | Required. The model name exactly as the server expects it. `custom` is reserved. |
 | `type` | Required. `text` or `image`. |
 | `displayname` | The name shown in the dropdown. Defaults to `name`. |
-| `default` | `true` to make this the default for its type. Without one, the bundled default is used (`extend`) or the first model of the type (`replace`). |
+| `default` | `true` to make this the default for its type. Without one, the first model offered is the default. |
 | `settings` | Fields shown under **Settings** when the model is chosen. Each key is sent as a request parameter. `type` is `int`, `float`, `text` or `select` (with `options`). `label` and `help` are optional text. Names the plugin sets itself, such as `model` or `messages`, are not allowed. |
 | `sizes` | Image models only, required. The `WIDTHxHEIGHT` size sent for the square, landscape and portrait aspect ratios. |
 | `quality` | Image models only, required. The API value sent for standard and hd quality. |
 | `outputformat` | Image models only. Sent as `output_format`. Leave out if the server does not accept it. |
 | `responseformat` | Image models only. Sent as `response_format`, for example `b64_json`. Leave out if the server does not accept it. |
 
-A saved action keeps its model if the model is later removed from the list. The model is then shown as
-**Custom**. **Test connection and get models** lists the model names the server has, which helps when writing the list.
+The setting can also be a plain list of models, without the `models` key.
+
+A saved action keeps its model if the server stops listing it. The model is then shown as **Custom**. **Test connection and get models** lists the model names the server has, which helps when writing the list.
 
 ## Testing the connection
 
-Once an instance is saved, a **Test connection and get models** button appears on the provider instance settings page and on
-each action settings page. It needs the `moodle/site:config` capability.
+Once an instance is saved, a **Test connection and get models** button appears on the provider instance settings
+page. It needs the `moodle/site:config` capability.
 
 The test asks the server for its list of models (`GET {API endpoint}/models`). That confirms in one request that:
 
@@ -211,12 +242,9 @@ The result shows:
 - a warning for each enabled action whose model is not in that list (for example a misspelt Ollama model name),
 - a warning for each per-action API endpoint that the HTTP security settings block.
 
-On an action settings page, a successful test also adds the server's models to the **AI model** dropdown, so
-you can pick one and save. The page is not reloaded, so other changes on it are kept. The list is remembered
-for an hour, or until the API endpoint or key is changed. Models in the bundled list or the instance
-[model list](#model-lists) keep their display name and settings, and stay in the dropdown for their type. The
-server does not say which of its other models are for text and which for images, so those are added to the
-text dropdown only. To offer one of them for images, add it to the instance model list as an image model.
+A successful test also refreshes the list of models offered in the **AI model** dropdowns of the action settings
+pages, which otherwise fetch it themselves (see [Where the model list comes from](#where-the-model-list-comes-from)).
+If an action settings page shows that no models are listed, it links back here to test the connection.
 
 The models request always uses the provider API endpoint. A per-action endpoint is only checked against the
 HTTP security settings.

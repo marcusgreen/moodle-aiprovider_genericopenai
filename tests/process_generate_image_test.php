@@ -63,7 +63,7 @@ final class process_generate_image_test extends \advanced_testcase {
         $this->provider = $this->create_provider(
             actionclass: \core_ai\aiactions\generate_image::class,
             actionconfig: [
-                'model' => 'gpt-image-2.6-sunburst',
+                'model' => 'image-model',
             ],
         );
         $this->create_action();
@@ -120,7 +120,7 @@ final class process_generate_image_test extends \advanced_testcase {
         $requestdata = (object) json_decode($request->getBody()->getContents());
 
         $this->assertEquals('This is a test prompt', $requestdata->prompt);
-        $this->assertEquals('gpt-image-2.6-sunburst', $requestdata->model);
+        $this->assertEquals('image-model', $requestdata->model);
         $this->assertEquals('1', $requestdata->n);
         $this->assertEquals('high', $requestdata->quality);
         $this->assertObjectNotHasProperty('response_format', $requestdata);
@@ -135,7 +135,7 @@ final class process_generate_image_test extends \advanced_testcase {
         $this->provider = $this->create_provider(
             actionclass: \core_ai\aiactions\generate_image::class,
             actionconfig: [
-                'model' => 'gpt-image-2.6-sunburst',
+                'model' => 'image-model',
                 'temperature' => '0.5',
                 'max_completion_tokens' => '100',
             ],
@@ -148,7 +148,7 @@ final class process_generate_image_test extends \advanced_testcase {
 
         $body = (object) json_decode($request->getBody()->getContents());
 
-        $this->assertEquals('gpt-image-2.6-sunburst', $body->model);
+        $this->assertEquals('image-model', $body->model);
         $this->assertEquals('0.5', $body->temperature);
         $this->assertEquals('100', $body->max_completion_tokens);
 
@@ -225,7 +225,7 @@ final class process_generate_image_test extends \advanced_testcase {
 
         $this->assertStringContainsString('An image that represents the concept of a \'test\'.', $result['revisedprompt']);
         $this->assertNotEmpty($result['b64json']);
-        $this->assertEquals('gpt-image-2.6-sunburst', $result['model']);
+        $this->assertEquals('image-model', $result['model']);
     }
 
     /**
@@ -250,7 +250,7 @@ final class process_generate_image_test extends \advanced_testcase {
 
         $this->assertStringContainsString('An image that represents the concept of a \'test\'.', $result['revisedprompt']);
         $this->assertInstanceOf(\stored_file::class, $result['draftfile']);
-        $this->assertEquals('gpt-image-2.6-sunburst', $result['model']);
+        $this->assertEquals('image-model', $result['model']);
     }
 
     /**
@@ -266,7 +266,7 @@ final class process_generate_image_test extends \advanced_testcase {
             'success' => true,
             'revisedprompt' => 'An image that represents the concept of a \'test\'.',
             'imageurl' => 'oaidalleapiprodscus.blob.core.windows.net',
-            'model' => 'gpt-image-2.6-sunburst',
+            'model' => 'image-model',
         ];
 
         $result = $method->invoke($processor, $response);
@@ -434,7 +434,7 @@ final class process_generate_image_test extends \advanced_testcase {
             actionconfig: [
                 \core_ai\aiactions\generate_image::class => [
                     'settings' => [
-                        'model' => 'gpt-image-2.6-sunburst',
+                        'model' => 'image-model',
                         'endpoint' => "https://api.openai.com/v1/chat/completions",
                     ],
                 ],
@@ -562,7 +562,7 @@ final class process_generate_image_test extends \advanced_testcase {
             actionconfig: [
                 \core_ai\aiactions\generate_image::class => [
                     'settings' => [
-                        'model' => 'gpt-image-2.6-sunburst',
+                        'model' => 'image-model',
                         'endpoint' => "https://api.openai.com/v1/chat/completions",
                     ],
                 ],

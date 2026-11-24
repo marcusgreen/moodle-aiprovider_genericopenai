@@ -31,7 +31,7 @@ class helper {
      * Get a model offered by a provider instance.
      *
      * @param string $modelname Model name.
-     * @param \core_ai\provider|null $provider The provider instance, or null for the bundled models only.
+     * @param \core_ai\provider|null $provider The provider instance, or null for none.
      * @return configured_model|null The model, or null if it is not offered (for example a custom model).
      */
     public static function get_model_class(string $modelname, ?\core_ai\provider $provider = null): ?configured_model {
@@ -89,9 +89,8 @@ class helper {
      *
      * @param \MoodleQuickForm $mform The form.
      * @param int $providerid The provider instance id. Nothing is added for an unsaved instance.
-     * @param int $modeltype On an action form, the type of the AI model dropdown to fill with the models found, else 0.
      */
-    public static function add_connection_test(\MoodleQuickForm $mform, int $providerid, int $modeltype = 0): void {
+    public static function add_connection_test(\MoodleQuickForm $mform, int $providerid): void {
         global $OUTPUT, $PAGE;
 
         if ($providerid <= 0) {
@@ -102,10 +101,7 @@ class helper {
             'static',
             'connectiontest',
             '',
-            $OUTPUT->render_from_template('aiprovider_genericopenai/connection_test', [
-                'providerid' => $providerid,
-                'modeltype' => $modeltype,
-            ]),
+            $OUTPUT->render_from_template('aiprovider_genericopenai/connection_test', ['providerid' => $providerid]),
         );
     }
 }
