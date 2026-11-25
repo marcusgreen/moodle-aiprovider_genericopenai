@@ -377,7 +377,10 @@ final class model_registry {
                 $errors[] = get_string('models:error:settingname', 'aiprovider_genericopenai', $key);
                 continue;
             }
-            if (!is_array($setting) || !array_key_exists($setting['type'] ?? null, configured_model::SETTING_TYPES)) {
+            if (
+                !is_array($setting) || !is_string($setting['type'] ?? null)
+                    || !array_key_exists($setting['type'], configured_model::SETTING_TYPES)
+            ) {
                 $errors[] = get_string('models:error:settingtype', 'aiprovider_genericopenai', $key);
                 continue;
             }

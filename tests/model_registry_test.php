@@ -235,6 +235,8 @@ final class model_registry_test extends \advanced_testcase {
                 'models:error:settingname', 'Top-P'],
             'Bad setting type' => [$model(['name' => 'a', 'type' => 'text', 'settings' => ['seed' => ['type' => 'bool']]]),
                 'models:error:settingtype', 'seed'],
+            'Setting type not a string' => [$model(['name' => 'a', 'type' => 'text', 'settings' => ['seed' => ['type' => []]]]),
+                'models:error:settingtype', 'seed'],
             'Select without options' => [
                 $model(['name' => 'a', 'type' => 'text', 'settings' => ['effort' => ['type' => 'select']]]),
                 'models:error:settingoptions', 'effort'],
